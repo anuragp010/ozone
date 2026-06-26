@@ -54,6 +54,7 @@ const OMDBInsights: React.FC<{}> = () => {
 
   const rowExpandSignal = React.useRef<AbortController>();
   const {state: { activeTab } = {}} = useLocation<Record<string, any>>();
+  const [activeKey, setActiveKey] = React.useState<string>(activeTab ?? '1');
 
   const paginationConfig: TablePaginationConfig = {
     showTotal: (total: number, range) => `${range[0]}-${range[1]} of ${total}`
@@ -118,7 +119,7 @@ const OMDBInsights: React.FC<{}> = () => {
     </div>
     <div style={{ padding: '24px' }}>
       <div className='content-div'>
-        <Tabs defaultActiveKey={activeTab ?? '1'}>
+        <Tabs activeKey={activeKey} onChange={setActiveKey} destroyInactiveTabPane>
           <Tabs.TabPane key='1' tab={
             <label>
               Container Mismatch Info
