@@ -235,16 +235,23 @@ public final class StorageContainerManager extends ServiceRuntimeInfoImpl
   /*
    * RPC Endpoints exposed by SCM.
    */
+  // All interactions between the datanodes and SCM.
   private final SCMDatanodeProtocolServer datanodeProtocolServer;
+  // For allocate block and delete block.
   private final SCMBlockProtocolServer blockProtocolServer;
+  // For the admin commands.
   private final SCMClientProtocolServer clientProtocolServer;
+  // For all security related communications between OM, Datanodes and SCM.
   private SCMSecurityProtocolServer securityProtocolServer;
 
   /*
    * State Managers of SCM.
    */
+  // Datanode Management
   private NodeManager scmNodeManager;
+  // Pipeline management
   private PipelineManager pipelineManager;
+  // Container Manager, balancer.
   private ContainerManager containerManager;
   private BlockManager scmBlockManager;
   private SCMStorageConfig scmStorageConfig;
@@ -260,6 +267,7 @@ public final class StorageContainerManager extends ServiceRuntimeInfoImpl
   private SCMContext scmContext;
   private SequenceIdGenerator sequenceIdGen;
 
+  // Queue messages between the various managers.
   private final EventQueue eventQueue;
   private final SCMServiceManager serviceManager;
   private final ReconfigurationHandler reconfigurationHandler;

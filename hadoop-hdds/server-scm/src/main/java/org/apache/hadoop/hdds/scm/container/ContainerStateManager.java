@@ -162,7 +162,8 @@ public interface ContainerStateManager extends SCMHandler {
   void removeContainerReplica(ContainerReplica replica);
 
   /**
-   *
+   * @Replicate highlights that this is to be replicated
+   * across SCMs.
    */
   @Replicate
   void addContainer(ContainerInfoProto containerInfo)

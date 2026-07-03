@@ -70,6 +70,11 @@ import org.slf4j.LoggerFactory;
  * responsible for applying ratis committed transactions to
  * {@link StorageContainerManager}.
  */
+
+/**
+ * There are registered invokers. SCM state machine, based on the
+ * type of request made, invokes one of the handlers.
+ */
 public class SCMStateMachine extends BaseStateMachine {
   private static final Logger LOG =
       LoggerFactory.getLogger(SCMStateMachine.class);

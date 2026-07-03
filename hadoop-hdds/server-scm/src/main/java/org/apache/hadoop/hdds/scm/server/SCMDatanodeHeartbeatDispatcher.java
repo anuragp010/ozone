@@ -56,6 +56,8 @@ import org.slf4j.LoggerFactory;
 /**
  * This class is responsible for dispatching heartbeat from datanode to
  * appropriate EventHandler at SCM.
+ *
+ * This is where the fireEvent of Event Queue is called.
  */
 public final class SCMDatanodeHeartbeatDispatcher {
 

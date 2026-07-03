@@ -79,6 +79,17 @@ import org.slf4j.LoggerFactory;
  *
  * This class is NOT thread safe. All the calls are idempotent.
  */
+
+/**
+ * Data stored in memory = ContainerStateMap
+ * Data stored on disk = RocksDB - containerStore variable.
+ * The persistent store is updated during every write and
+ * is used to restore the in memory state during restarts.
+ * Reads are from in memory.
+ *
+ * This uses RATIS to update the states across SCM when in HA mode.
+ * Only the write calls go through RATIS.
+ */
 public final class ContainerStateManagerImpl
     implements ContainerStateManager {
 

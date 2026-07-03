@@ -56,6 +56,28 @@ import org.slf4j.LoggerFactory;
  * Event queue handles a collection of event handlers and routes the incoming
  * events to one (or more) event handler.
  */
+
+/**
+ * We can publish SCMEvents to this EventQueue. The registered handler for the
+ * given event type will receive the event through the onMessage function.
+ * Refer to SCMEvents for all the events supported in SCM.
+ *
+ * Who publishes events? It could be a containerReport event. Done using
+ * eventQueue.fireEvent(evenType, message).
+ *
+ * Per handler we have a thread running. The onMessage implementation in
+ * the handler must be lightweight as it's running on the manager.
+ *
+ * We could have multiple threads per handler if we modify configs.
+ *
+ * If a message is delivered out of order, SCM is designed such that
+ * these are handled. So if ClosePipeline is handled by the closePipeline
+ * handler before the closeContainer event, then closePipeline internally initiates
+ * closeContainer.
+ *
+ * Only for DN reports, we have an executor service, which distributes processing
+ * of messages/reports to a thread based on the DN id.
+ */
 public class EventQueue implements EventPublisher, AutoCloseable {
 
   private static final Logger LOG =
