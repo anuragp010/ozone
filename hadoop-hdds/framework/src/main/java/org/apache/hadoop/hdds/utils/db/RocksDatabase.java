@@ -42,6 +42,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.hadoop.hdds.StringUtils;
+import org.apache.hadoop.hdds.utils.LeakDetector;
 import org.apache.hadoop.hdds.utils.db.managed.ManagedCheckpoint;
 import org.apache.hadoop.hdds.utils.db.managed.ManagedColumnFamilyOptions;
 import org.apache.hadoop.hdds.utils.db.managed.ManagedCompactRangeOptions;
@@ -79,6 +80,8 @@ public final class RocksDatabase implements Closeable {
 
   public static final String ESTIMATE_NUM_KEYS = "rocksdb.estimate-num-keys";
 
+  private static final LeakDetector LEAK_DETECTOR = new LeakDetector(RocksDatabase.class.getName());
+
   static {
     ManagedRocksObjectUtils.loadRocksDBLibrary();
   }
@@ -100,6 +103,8 @@ public final class RocksDatabase implements Closeable {
   private final AtomicBoolean isClosed = new AtomicBoolean();
   /** Count the number of operations running concurrently. */
   private final AtomicLong counter = new AtomicLong();
+  /** Warns if this database object is garbage collected without being closed. Assigned in the constructor. */
+  private final UncheckedAutoCloseable leakTracker;
 
   static String bytes2String(byte[] bytes) {
     return StringCodec.get().fromPersistedFormat(bytes);
@@ -354,6 +359,7 @@ public final class RocksDatabase implements Closeable {
       }, ConcurrentHashMap::new));
     this.columnFamilies = toColumnFamilyMap(handles);
     this.columnFamilyNames = MemoizedSupplier.valueOf(() -> toColumnFamilyNameMap(columnFamilies.values()));
+    this.leakTracker = LEAK_DETECTOR.track(this, newLeakReporter(isClosed, name, creationStackTrace));
   }
 
   private Map<String, ColumnFamily> toColumnFamilyMap(List<ColumnFamilyHandle> handles) throws RocksDBException {
@@ -381,6 +387,9 @@ public final class RocksDatabase implements Closeable {
 
   private void close(boolean isSync) {
     if (isClosed.compareAndSet(false, true)) {
+      // Closed properly: stop tracking so the leak reporter does not fire at GC.
+      leakTracker.close();
+
       // Wait for all background work to be cancelled first. e.g. RDB compaction
       db.get().cancelAllBackgroundWork(true);
 
@@ -961,12 +970,17 @@ public final class RocksDatabase implements Closeable {
     }
   }
 
-  @Override
-  protected void finalize() throws Throwable {
-    if (!isClosed()) {
-      LOG.warn("RocksDatabase {} is not closed properly.", name, creationStackTrace);
-    }
-    super.finalize();
+  /**
+   * @return a leak reporter that captures only the {@code isClosed} flag, {@code name} and
+   * {@code creationStackTrace} objects, never the {@link org.apache.hadoop.hdds.utils.db.RocksDatabase} itself (which
+   * would pin it and defeat detection).
+   */
+  static Runnable newLeakReporter(AtomicBoolean isClosed, String name, Throwable creationStackTrace) {
+    return () -> {
+      if (!isClosed.get()) {
+          LOG.warn("RocksDatabase {} is not closed properly.", name, creationStackTrace);
+      }
+    };
   }
 
   public ManagedRocksDB getManagedRocksDb() {

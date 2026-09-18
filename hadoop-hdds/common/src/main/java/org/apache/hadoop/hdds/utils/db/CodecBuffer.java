@@ -96,13 +96,57 @@ public class CodecBuffer implements UncheckedAutoCloseable {
 
   /** To detect buffer leak. */
   private static class LeakDetector {
+    // Fully-qualified to avoid a name clash with this enclosing class.
+    private static final org.apache.hadoop.hdds.utils.LeakDetector LEAK_DETECTOR_INSTANCE
+        = new org.apache.hadoop.hdds.utils.LeakDetector(CodecBuffer.class.getName());
+
     static CodecBuffer newCodecBuffer(ByteBuf buf, Object wrapped) {
       return new CodecBuffer(buf, wrapped) {
+        private final UncheckedAutoCloseable leakTracker = track(this);
+
         @Override
-        protected void finalize() {
-          detectLeaks();
+        public void release() {
+          try {
+            super.release();
+          } finally {
+            // Released properly: stop tracking so the leak reporter does not fire at GC.
+            leakTracker.close();
+          }
         }
       };
+    }
+
+    /**
+     * Register the buffer with {@link #LEAK_DETECTOR_INSTANCE}, capturing only its {@code buf}/{@code released}/
+     * {@code elements} fields into locals so the reporter never captures the {@link CodecBuffer}
+     * itself (which would keep it strongly reachable and defeat detection).
+     */
+    private static UncheckedAutoCloseable track(CodecBuffer codecBuffer) {
+      final ByteBuf buf = codecBuffer.buf;
+      final CompletableFuture<Void> released = codecBuffer.released;
+      final StackTraceElement[] elements = codecBuffer.elements;
+      return LEAK_DETECTOR_INSTANCE.track(codecBuffer, () -> detectLeaks(buf, released, elements));
+    }
+
+    /**
+     * Detect a buffer leak: if the buffer was garbage collected without being released, report it
+     * and release the underlying {@link ByteBuf} back to the pool. Invoked by {@link #LEAK_DETECTOR_INSTANCE}
+     * through a {@link java.lang.ref.ReferenceQueue}; must not reference the {@link CodecBuffer}.
+     */
+    private static void detectLeaks(ByteBuf buf, CompletableFuture<Void> released, StackTraceElement[] elements) {
+      final int capacity = buf.capacity();
+      if (!released.isDone() && capacity > 0) {
+        final int refCnt = buf.refCnt();
+        if (refCnt > 0) {
+          final int leak = LEAK_COUNT.incrementAndGet();
+          LOG.warn("LEAK {}: {}, refCnt={}, capacity={}{}",
+              leak, buf, refCnt, capacity,
+              elements != null
+                  ? " allocation:\n" + formatStackTrace(elements, 3)
+                  : "");
+          buf.release(refCnt);
+        }
+      }
     }
   }
 
@@ -260,32 +304,6 @@ public class CodecBuffer implements UncheckedAutoCloseable {
 
   private void assertRefCnt(int expected) {
     Preconditions.assertSame(expected, buf.refCnt(), "refCnt");
-  }
-
-  /**
-   * Detect buffer leak by asserting that the underlying buffer is released
-   * when this object is garbage collected.
-   * This method may be invoked inside the {@link #finalize()} method
-   * or using a {@link java.lang.ref.ReferenceQueue}.
-   * For performance reason, this class does not override {@link #finalize()}.
-   *
-   * @see #enableLeakDetection()
-   */
-  void detectLeaks() {
-    // leak detection
-    final int capacity = buf.capacity();
-    if (!released.isDone() && capacity > 0) {
-      final int refCnt = buf.refCnt();
-      if (refCnt > 0) {
-        final int leak = LEAK_COUNT.incrementAndGet();
-        LOG.warn("LEAK {}: {}, refCnt={}, capacity={}{}",
-            leak, this, refCnt, capacity,
-            elements != null
-                ? " allocation:\n" + formatStackTrace(elements, 3)
-                : "");
-        buf.release(refCnt);
-      }
-    }
   }
 
   @Override
